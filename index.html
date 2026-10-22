@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Königsberg Uzay Simülasyonu</title>
+    
+    <!-- Tailwind CSS for sleek UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Three.js Library and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #000;
+            color: #fff;
+            user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: rgba(10, 15, 30, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7);
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to 3D canvas */
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .pointer-events-auto {
+            pointer-events: auto;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 255, 204, 0.5); border-radius: 10px; }
+
+        .neon-text {
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.7);
+        }
+        
+        .neon-text-red {
+            text-shadow: 0 0 10px rgba(255, 50, 100, 0.7);
+        }
+
+        #toast {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        
+        <!-- Left Panel: Info & Instructions -->
+        <div class="glass-panel pointer-events-auto rounded-2xl p-6 w-80 flex flex-col h-fit max-h-full overflow-y-auto">
+            <h1 class="text-3xl font-bold text-[#00ffcc] neon-text mb-2 tracking-wider">KÖNİGSBERG</h1>
+            <h2 class="text-sm text-gray-400 mb-6 uppercase tracking-widest border-b border-gray-700 pb-4">Graf Teorisi Simülasyonu</h2>
+            
+            <div class="mb-6">
+                <p class="text-[15px] leading-relaxed text-gray-300">
+                    Euler'in 1736'da çözdüğü topolojik problem. 
+                    <strong class="text-white">Görev:</strong> Uzay ağındaki her köprüden (neon hattan) sadece <strong>bir kez</strong> geçerek tüm sistemi turlayın.
+                </p>
+            </div>
+
+            <div class="bg-black/40 rounded-lg p-4 mb-6 border border-[#00ffcc]/20">
+                <p id="instruction-text" class="text-[#00ffcc] font-semibold text-center text-lg">
+                    Başlamak için bir yıldıza tıklayın.
+                </p>
+            </div>
+
+            <div class="mt-auto space-y-3">
+                <button onclick="resetSim()" class="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg transition-colors border border-gray-600">
+                    ROTAYI SIFIRLA
+                </button>
+                <button id="hack-btn" onclick="toggleHack()" class="w-full py-3 bg-red-900/60 hover:bg-red-800/80 text-[#ff3366] hover:text-white font-bold rounded-lg transition-all border border-red-500/50 relative overflow-hidden group">
+                    <span class="relative z-10 flex flex-col items-center">
+                        <span>AĞI HACKLE (Köprü Yık)</span>
+                        <span class="text-xs font-normal opacity-70 mt-1">Sistemi çözülebilir yap</span>
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Panel: Analytics & Math -->
+        <div class="glass-panel pointer-events-auto rounded-2xl p-6 w-80 flex flex-col h-fit max-h-full overflow-y-auto">
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-[#00ffcc]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Sistem Analizi
+            </h3>
+
+            <!-- Degrees List -->
+            <div id="degree-list" class="space-y-3 mb-6">
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Euler's Theorem Check -->
+            <div class="bg-black/40 rounded-lg p-4 border border-gray-700">
+                <h4 class="text-[#00ffcc] font-semibold mb-2">Euler Teoremi</h4>
+                <p class="text-sm text-gray-300 mb-3">
+                    Kesintisiz bir tur için "Tekil Dereceli" düğüm sayısı tam olarak 0 veya 2 olmalıdır.
+                </p>
+                <div class="flex justify-between items-center bg-black/60 p-2 rounded">
+                    <span class="text-gray-400 text-sm">Tekil Düğüm:</span>
+                    <span id="odd-count" class="text-2xl font-bold text-[#ff3366] neon-text-red">4</span>
+                </div>
+                <div id="theorem-status" class="mt-3 text-center py-2 rounded bg-red-900/40 text-[#ff3366] font-bold border border-red-500/30">
+                    MATEMATİKSEL OLARAK İMKANSIZ
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toast Notification -->
+        <div id="toast" class="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#00ffcc] text-black px-8 py-3 rounded-full shadow-[0_0_20px_rgba(0,255,204,0.5)] font-bold opacity-0 translate-y-10 pointer-events-none">
+            Sistem Mesajı
+        </div>
+    </div>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- THREE.JS SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050814, 0.015); // Space fog
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimize performance
+        renderer.setClearColor(0x03050a);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 50;
+        controls.minDistance = 5;
+
+        // --- SPACE BACKGROUND (STARS) ---
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 2000;
+        const posArray = new Float32Array(starsCount * 3);
+        
+        for(let i = 0; i < starsCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 100; // Spread stars around
+        }
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const starsMaterial = new THREE.PointsMaterial({
+            size: 0.1,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.8
+        });
+        const starsMesh = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(starsMesh);
+
+        // --- GRAPH DATA & MATERIALS ---
+        const neonCyan = 0x00f0ff;
+        const neonGreen = 0x39ff14;
+        const dimGray = 0x334455;
+        const neonRed = 0xff3366;
+
+        const nodeMaterialNormal = new THREE.MeshStandardMaterial({ 
+            color: 0x112233, emissive: neonCyan, emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.8 
+        });
+        const nodeMaterialActive = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5, roughness: 0.1 
+        });
+
+        // Use TubeGeometry for glowing 3D lines
+        function createEdgeMaterial(visited = false) {
+            return new THREE.MeshBasicMaterial({ 
+                color: visited ? neonGreen : dimGray,
+                transparent: true,
+                opacity: visited ? 1.0 : 0.4
+            });
+        }
+
+        // 3D coordinates for Königsberg (A=North, B=East, C=Island, D=South)
+        const nodesData = {
+            'A': { id: 'A', pos: new THREE.Vector3(0, 4, -2), name: 'Kuzey Yıldızı' },
+            'B': { id: 'B', pos: new THREE.Vector3(6, 0, 0), name: 'Doğu İstasyonu' },
+            'C': { id: 'C', pos: new THREE.Vector3(0, 0, 0), name: 'Merkez Ağ' },
+            'D': { id: 'D', pos: new THREE.Vector3(0, -4, 2), name: 'Güney Yıldızı' }
+        };
+
+        const originalEdgesData = [
+            { id: 'e1', from: 'A', to: 'C', curveOffsets: new THREE.Vector3(-3, 0, -2) }, // Left bridge
+            { id: 'e2', from: 'A', to: 'C', curveOffsets: new THREE.Vector3(3, 0, 2) },  // Right bridge
+            { id: 'e3', from: 'C', to: 'D', curveOffsets: new THREE.Vector3(-3, 0, -2) }, // Left bridge
+            { id: 'e4', from: 'C', to: 'D', curveOffsets: new THREE.Vector3(3, 0, 2) },  // Right bridge
+            { id: 'e5', from: 'A', to: 'B', curveOffsets: new THREE.Vector3(2, 3, -1) },  
+            { id: 'e6', from: 'B', to: 'C', curveOffsets: new THREE.Vector3(2, 0, 3) },
+            { id: 'e7', from: 'B', to: 'D', curveOffsets: new THREE.Vector3(2, -3, 1) }
+        ];
+
+        let activeEdgesData = [...originalEdgesData];
+        let nodes3D = {}; // Store mesh references
+        let edges3D = {}; // Store mesh references
+        
+        // Interaction State
+        let currentNode = null;
+        let visitedEdges = new Set();
+        let isHacked = false;
+
+        // Add Lights
+        const ambientLight = new THREE.AmbientLight(0x202040);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(neonCyan, 2, 50);
+        scene.add(pointLight);
+
+        function buildGraph() {
+            // Clear old meshes if rebuilding (for hack button)
+            Object.values(nodes3D).forEach(n => scene.remove(n.mesh));
+            Object.values(edges3D).forEach(e => scene.remove(e.mesh));
+            nodes3D = {};
+            edges3D = {};
+
+            // Build Nodes
+            const sphereGeo = new THREE.SphereGeometry(1.2, 32, 32);
+            for (const [key, data] of Object.entries(nodesData)) {
+                const mesh = new THREE.Mesh(sphereGeo, nodeMaterialNormal.clone());
+                mesh.position.copy(data.pos);
+                mesh.userData = { id: key, type: 'node' };
+                scene.add(mesh);
+                nodes3D[key] = { mesh, data };
+                
+                // Add inner glowing point light to nodes
+                const nodeLight = new THREE.PointLight(neonCyan, 1, 10);
+                mesh.add(nodeLight);
+            }
+
+            // Build Edges (Tubes via QuadraticBezierCurve3)
+            activeEdgesData.forEach(edge => {
+                const p1 = nodesData[edge.from].pos;
+                const p2 = nodesData[edge.to].pos;
+                
+                // Calculate control point for curve
+                const midPoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                const controlPoint = new THREE.Vector3().addVectors(midPoint, edge.curveOffsets);
+                
+                const curve = new THREE.QuadraticBezierCurve3(p1, controlPoint, p2);
+                
+                const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.15, 8, false);
+                const mesh = new THREE.Mesh(tubeGeo, createEdgeMaterial(false));
+                
+                scene.add(mesh);
+                edges3D[edge.id] = { mesh, data: edge };
+            });
+        }
+
+        function updateUI() {
+            // Calculate Degrees
+            let degrees = { A: 0, B: 0, C: 0, D: 0 };
+            activeEdgesData.forEach(e => {
+                degrees[e.from]++;
+                degrees[e.to]++;
+            });
+
+            const listEl = document.getElementById('degree-list');
+            listEl.innerHTML = '';
+            let oddCount = 0;
+
+            for (const [id, deg] of Object.entries(degrees)) {
+                const isOdd = deg % 2 !== 0;
+                if (isOdd) oddCount++;
+                
+                listEl.innerHTML += `
+                    <div class="flex justify-between items-center bg-gray-800/50 p-3 rounded-lg border ${isOdd ? 'border-red-500/30' : 'border-[#00ffcc]/30'}">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold bg-gray-900 ${isOdd ? 'text-[#ff3366]' : 'text-[#00ffcc]'}">
+                                ${id}
+                            </div>
+                            <span class="text-sm text-gray-300">${nodesData[id].name}</span>
+                        </div>
+                        <span class="text-xl font-bold ${isOdd ? 'text-[#ff3366]' : 'text-[#00ffcc]'}">${deg}</span>
+                    </div>
+                `;
+            }
+
+            // Update Theorem Verdict
+            const oddCountEl = document.getElementById('odd-count');
+            const statusEl = document.getElementById('theorem-status');
+            oddCountEl.innerText = oddCount;
+            
+            if (oddCount === 0 || oddCount === 2) {
+                oddCountEl.className = "text-2xl font-bold text-[#39ff14]";
+                statusEl.innerText = "SİSTEM ÇÖZÜLEBİLİR (Euler Onayı)";
+                statusEl.className = "mt-3 text-center py-2 rounded bg-green-900/40 text-[#39ff14] font-bold border border-green-500/30";
+            } else {
+                oddCountEl.className = "text-2xl font-bold text-[#ff3366] neon-text-red";
+                statusEl.innerText = "MATEMATİKSEL OLARAK İMKANSIZ";
+                statusEl.className = "mt-3 text-center py-2 rounded bg-red-900/40 text-[#ff3366] font-bold border border-red-500/30";
+            }
+        }
+
+        function showToast(msg, isSuccess = false) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            if(isSuccess) {
+                toast.className = "absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#39ff14] text-black px-8 py-3 rounded-full shadow-[0_0_20px_rgba(57,255,20,0.6)] font-bold transition-all duration-400";
+            } else {
+                toast.className = "absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#00ffcc] text-black px-8 py-3 rounded-full shadow-[0_0_20px_rgba(0,255,204,0.5)] font-bold transition-all duration-400";
+            }
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-10');
+            }, 3000);
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function onPointerDown(event) {
+            // Convert mouse position to normalized device coordinates
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // Check intersection with nodes
+            const nodeMeshes = Object.values(nodes3D).map(n => n.mesh);
+            const intersects = raycaster.intersectObjects(nodeMeshes);
+
+            if (intersects.length > 0) {
+                const clickedNodeId = intersects[0].object.userData.id;
+                handleNodeClick(clickedNodeId);
+            }
+        }
+
+        window.addEventListener('pointerdown', onPointerDown);
+
+        function handleNodeClick(nodeId) {
+            const instText = document.getElementById('instruction-text');
+
+            if (!currentNode) {
+                // First click - Start journey
+                currentNode = nodeId;
+                instText.innerText = "Sıradaki yıldıza geçiş yapın.";
+                instText.style.color = "#fff";
+                updateVisuals();
+                return;
+            }
+
+            if (currentNode === nodeId) return; // Same node clicked
+
+            // Find valid edge to traverse
+            const validEdge = activeEdgesData.find(e => 
+                !visitedEdges.has(e.id) && 
+                ((e.from === currentNode && e.to === nodeId) || (e.from === nodeId && e.to === currentNode))
+            );
+
+            if (validEdge) {
+                visitedEdges.add(validEdge.id);
+                currentNode = nodeId;
+                updateVisuals();
+                checkGameEnd();
+            } else {
+                showToast("Geçersiz Rota: Bu yönde kullanılabilir köprü yok!");
+            }
+        }
+
+        function updateVisuals() {
+            // Update Nodes
+            for (const [id, n] of Object.entries(nodes3D)) {
+                if (id === currentNode) {
+                    n.mesh.material = nodeMaterialActive;
+                    n.mesh.scale.set(1.2, 1.2, 1.2);
+                } else {
+                    n.mesh.material = nodeMaterialNormal;
+                    n.mesh.scale.set(1, 1, 1);
+                }
+            }
+
+            // Update Edges
+            for (const [id, e] of Object.entries(edges3D)) {
+                const isVisited = visitedEdges.has(id);
+                e.mesh.material.color.setHex(isVisited ? neonGreen : dimGray);
+                e.mesh.material.opacity = isVisited ? 1.0 : 0.4;
+            }
+        }
+
+        function checkGameEnd() {
+            const instText = document.getElementById('instruction-text');
+            
+            if (visitedEdges.size === activeEdgesData.length) {
+                instText.innerHTML = "<span class='text-[#39ff14]'>GÖREV BAŞARILI: Tüm ağ tarandı!</span>";
+                showToast("Harika! Euler yolunu tamamladın.", true);
+                return;
+            }
+
+            // Check if stuck
+            const hasMoves = activeEdgesData.some(e => 
+                !visitedEdges.has(e.id) && (e.from === currentNode || e.to === currentNode)
+            );
+
+            if (!hasMoves) {
+                instText.innerHTML = "<span class='text-[#ff3366]'>SİSTEM KİLİTLENDİ: Gidilecek yol kalmadı.</span>";
+                showToast("Sıkıştın! Köprüler bitti ama harita bitmedi.");
+            }
+        }
+
+        function resetSim() {
+            currentNode = null;
+            visitedEdges.clear();
+            document.getElementById('instruction-text').innerHTML = "Başlamak için bir yıldıza tıklayın.";
+            document.getElementById('instruction-text').style.color = "#00ffcc";
+            updateVisuals();
+        }
+
+        function toggleHack() {
+            isHacked = !isHacked;
+            const btn = document.getElementById('hack-btn');
+            
+            if (isHacked) {
+                // Remove A-B bridge (e5)
+                activeEdgesData = originalEdgesData.filter(e => e.id !== 'e5');
+                btn.className = "w-full py-3 bg-[#00ffcc]/20 hover:bg-[#00ffcc]/40 text-[#00ffcc] font-bold rounded-lg transition-all border border-[#00ffcc]/50 group";
+                btn.innerHTML = `
+                    <span class="relative z-10 flex flex-col items-center">
+                        <span>SİSTEMİ GERİ YÜKLE</span>
+                        <span class="text-xs font-normal opacity-70 mt-1">Orijinal probleme dön</span>
+                    </span>
+                `;
+                showToast("A-B köprüsü yıkıldı. Euler kuralı sağlandı!");
+            } else {
+                activeEdgesData = [...originalEdgesData];
+                btn.className = "w-full py-3 bg-red-900/60 hover:bg-red-800/80 text-[#ff3366] hover:text-white font-bold rounded-lg transition-all border border-red-500/50 group";
+                btn.innerHTML = `
+                    <span class="relative z-10 flex flex-col items-center">
+                        <span>AĞI HACKLE (Köprü Yık)</span>
+                        <span class="text-xs font-normal opacity-70 mt-1">Sistemi çözülebilir yap</span>
+                    </span>
+                `;
+                showToast("Orijinal Königsberg sistemine dönüldü.");
+            }
+            
+            buildGraph();
+            updateUI();
+            resetSim();
+        }
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Slowly rotate stars background
+            starsMesh.rotation.y += 0.0005;
+            starsMesh.rotation.x += 0.0002;
+            
+            // Floating effect for nodes
+            const time = Date.now() * 0.001;
+            for (const n of Object.values(nodes3D)) {
+                n.mesh.position.y += Math.sin(time + n.mesh.position.x) * 0.005;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Init
+        buildGraph();
+        updateUI();
+        animate();
+
+    </script>
+</body>
+</html>
